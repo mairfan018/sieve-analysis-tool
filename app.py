@@ -35,27 +35,31 @@ def calculate_coefficients(x_interp, y_interp):
             'Cc': round(Cc, 3)
         }
     except:
-        return {
-            'D10': None,
-            'D30': None,
-            'D60': None,
-            'Cu': None,
-            'Cc': None
-        }
+        return None
 
 def create_plot(sieve_data, interpolation_method='linear'):
     """Create particle size distribution plot."""
-    fig = Figure(figsize=(10, 6))
+    plt.style.use('seaborn')
+    fig = Figure(figsize=(12, 8))
     ax = fig.add_subplot(111)
     
     # Set up logarithmic scale for x-axis
     ax.set_xscale('log')
     ax.grid(True, which="both", ls="-", alpha=0.2)
-    ax.set_xlabel('Particle Size (mm)')
-    ax.set_ylabel('Percent Passing (%)')
-    ax.set_title('Particle Size Distribution Curve')
+    ax.set_xlabel('Particle Size (mm)', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Percent Passing (%)', fontsize=12, fontweight='bold')
+    ax.set_title('Particle Size Distribution Curve', fontsize=14, fontweight='bold', pad=20)
     
-    colors = ['b', 'r', 'g', 'c', 'm', 'y', 'k', 'orange', 'purple', 'brown']
+    # Set grid properties
+    ax.grid(True, which='major', linestyle='-', alpha=0.5)
+    ax.grid(True, which='minor', linestyle='--', alpha=0.3)
+    
+    # Custom colors with better visibility
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
+              '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+    
+    # Store coefficients for all samples
+    all_coefficients = {}
     
     for idx, (sample_name, data) in enumerate(sieve_data.items()):
         x_values = []
@@ -73,7 +77,7 @@ def create_plot(sieve_data, interpolation_method='linear'):
             y = np.array(y_values)
             
             # Create interpolation points
-            x_interp = np.geomspace(min(x), max(x), 100)
+            x_interp = np.geomspace(min(x), max(x), 200)  # Increased points for smoother curve
             
             # Perform interpolation
             if len(x) >= 4 and interpolation_method == 'cubic':
@@ -83,26 +87,44 @@ def create_plot(sieve_data, interpolation_method='linear'):
             
             # Plot the data
             color = colors[idx % len(colors)]
-            ax.plot(x, y, color + 'o', label=f'{sample_name} (Data Points)')
-            ax.plot(x_interp, y_interp, color + '-', label=f'{sample_name} (Interpolated)')
+            ax.plot(x, y, 'o', color=color, markersize=8, label=f'{sample_name} (Data Points)')
+            ax.plot(x_interp, y_interp, '-', color=color, linewidth=2, alpha=0.7, label=f'{sample_name} (Interpolated)')
             
-            # Calculate and display coefficients
+            # Calculate coefficients
             coef = calculate_coefficients(x_interp, y_interp)
-            if all(v is not None for v in coef.values()):
-                ax.text(0.02, 0.98 - idx*0.1, 
-                       f'{sample_name}: Cu={coef["Cu"]}, Cc={coef["Cc"]}',
-                       transform=ax.transAxes, fontsize=8)
+            if coef:
+                all_coefficients[sample_name] = coef
     
-    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    # Add coefficient information to plot
+    coef_text = ""
+    for idx, (sample_name, coef) in enumerate(all_coefficients.items()):
+        if coef:
+            coef_text += f"{sample_name}:\n"
+            coef_text += f"D10={coef['D10']}, D30={coef['D30']}, D60={coef['D60']}\n"
+            coef_text += f"Cu={coef['Cu']}, Cc={coef['Cc']}\n\n"
+    
+    if coef_text:
+        ax.text(1.05, 0.95, coef_text, transform=ax.transAxes, fontsize=10,
+                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    
+    # Customize axis
+    ax.set_xlim(0.05, 100)
+    ax.set_ylim(0, 100)
+    
+    # Add legend with better placement
+    ax.legend(bbox_to_anchor=(1.05, 0.5), loc='center left', fontsize=10)
+    
+    # Adjust layout to prevent text cutoff
     fig.tight_layout()
     
     # Convert plot to base64 string
     buf = io.BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight')
+    fig.savefig(buf, format='png', bbox_inches='tight', dpi=300)
     buf.seek(0)
     plot_url = base64.b64encode(buf.getvalue()).decode('utf-8')
+    plt.close()
     
-    return plot_url
+    return plot_url, all_coefficients
 
 @app.route('/')
 def home():
@@ -115,10 +137,11 @@ def analyze():
     interpolation_method = data.get('interpolation_method', 'linear')
     
     try:
-        plot_url = create_plot(sieve_data, interpolation_method)
+        plot_url, coefficients = create_plot(sieve_data, interpolation_method)
         return jsonify({
             'success': True,
-            'plot': plot_url
+            'plot': plot_url,
+            'coefficients': coefficients
         })
     except Exception as e:
         return jsonify({
