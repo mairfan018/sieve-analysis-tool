@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sieve Analysis Tool</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .sample-container {
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+        }
+        .plot-container {
+            margin-top: 20px;
+            text-align: center;
+        }
+        #plot-image {
+            max-width: 100%;
+            height: auto;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">Sieve Analysis Tool</h1>
+        
+        <div class="row">
+            <div class="col-md-4">
+                <div class="mb-3">
+                    <button id="add-sample" class="btn btn-primary">Add Sample</button>
+                    <select id="interpolation-method" class="form-select mt-2">
+                        <option value="linear">Linear Interpolation</option>
+                        <option value="cubic">Cubic Interpolation</option>
+                        <option value="nearest">Nearest Interpolation</option>
+                    </select>
+                </div>
+                
+                <div id="samples-container">
+                    <!-- Sample forms will be added here -->
+                </div>
+                
+                <button id="analyze" class="btn btn-success mt-3">Analyze</button>
+            </div>
+            
+            <div class="col-md-8">
+                <div class="loading">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+                <div class="plot-container">
+                    <img id="plot-image" style="display: none;">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sample template -->
+    <template id="sample-template">
+        <div class="sample-container">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <input type="text" class="form-control sample-name" style="width: auto;" placeholder="Sample Name">
+                <button class="btn btn-danger btn-sm remove-sample">Remove</button>
+            </div>
+            <div class="sieve-inputs">
+                {% for size in sieve_sizes %}
+                <div class="mb-2">
+                    <label class="form-label">{{ size }} mm</label>
+                    <input type="number" class="form-control" min="0" max="100" step="0.01" placeholder="% Passing">
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </template>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const samplesContainer = document.getElementById('samples-container');
+            const addSampleBtn = document.getElementById('add-sample');
+            const analyzeBtn = document.getElementById('analyze');
+            const plotImage = document.getElementById('plot-image');
+            const loadingSpinner = document.querySelector('.loading');
+            const template = document.getElementById('sample-template');
+
+            // Add sample
+            addSampleBtn.addEventListener('click', function() {
+                const sampleElement = template.content.cloneNode(true);
+                samplesContainer.appendChild(sampleElement);
+            });
+
+            // Remove sample
+            samplesContainer.addEventListener('click', function(e) {
+                if (e.target.classList.contains('remove-sample')) {
+                    e.target.closest('.sample-container').remove();
+                }
+            });
+
+            // Analyze data
+            analyzeBtn.addEventListener('click', function() {
+                const samples = document.querySelectorAll('.sample-container');
+                const sieveData = {};
+
+                samples.forEach(sample => {
+                    const name = sample.querySelector('.sample-name').value || 'Sample';
+                    const inputs = sample.querySelectorAll('.sieve-inputs input');
+                    const values = Array.from(inputs).map(input => {
+                        const val = parseFloat(input.value);
+                        return isNaN(val) ? null : val;
+                    });
+                    sieveData[name] = values;
+                });
+
+                // Show loading spinner
+                loadingSpinner.style.display = 'block';
+                plotImage.style.display = 'none';
+
+                // Send data to server
+                fetch('/analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        sieve_data: sieveData,
+                        interpolation_method: document.getElementById('interpolation-method').value
+                    }),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        plotImage.src = 'data:image/png;base64,' + data.plot;
+                        plotImage.style.display = 'block';
+                    } else {
+                        alert('Error: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    alert('Error: ' + error);
+                })
+                .finally(() => {
+                    loadingSpinner.style.display = 'none';
+                });
+            });
+
+            // Add initial sample
+            addSampleBtn.click();
+        });
+    </script>
+</body>
+</html>
